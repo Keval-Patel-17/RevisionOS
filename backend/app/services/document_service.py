@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 import pymupdf  # PyMuPDF
 from docx import Document as DocxDocument
@@ -7,6 +8,7 @@ from typing import List, Tuple
 from ..schemas.document import DocumentChunk, DocumentMetadata
 from ..utils.errors import DocumentProcessingError, UnsupportedFileTypeError
 from ..utils.logger import logger
+from ..utils.security import sanitize_filename, is_safe_path, validate_uuid
 from .metadata_filter import metadata_filter
 
 TEMP_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "temp_uploads")
@@ -14,29 +16,71 @@ os.makedirs(TEMP_STORAGE_DIR, exist_ok=True)
 
 class DocumentService:
     @staticmethod
-    def save_temp_file(file_bytes: bytes, filename: str) -> Tuple[str, str]:
-        ext = os.path.splitext(filename)[1].lower()
+    def cleanup_expired_temp_files(max_age_seconds: int = 7200):
+        """
+        Removes temporary files older than max_age_seconds (default 2 hours)
+        to prevent disk exhaustion and data accumulation.
+        """
+        try:
+            now = time.time()
+            if not os.path.exists(TEMP_STORAGE_DIR):
+                return
+            for fname in os.listdir(TEMP_STORAGE_DIR):
+                fpath = os.path.join(TEMP_STORAGE_DIR, fname)
+                if os.path.isfile(fpath):
+                    if now - os.path.getmtime(fpath) > max_age_seconds:
+                        try:
+                            os.remove(fpath)
+                            logger.info(f"Purged expired temporary upload: {fname}")
+                        except OSError as e:
+                            logger.warning(f"Could not delete expired temp file {fname}: {e}")
+        except Exception as e:
+            logger.error(f"Error during temp file cleanup: {e}")
+
+    @classmethod
+    def save_temp_file(cls, file_bytes: bytes, filename: str) -> Tuple[str, str]:
+        clean_name = sanitize_filename(filename)
+        ext = os.path.splitext(clean_name)[1].lower()
         if ext not in [".pdf", ".docx", ".pptx", ".txt"]:
             raise UnsupportedFileTypeError()
             
         file_id = str(uuid.uuid4())
-        saved_filename = f"{file_id}_{filename}"
+        saved_filename = f"{file_id}_{clean_name}"
         saved_path = os.path.join(TEMP_STORAGE_DIR, saved_filename)
         
+        # Verify path containment to eliminate path traversal
+        if not is_safe_path(TEMP_STORAGE_DIR, saved_path):
+            raise DocumentProcessingError(detail="Invalid file path detected.")
+            
         with open(saved_path, "wb") as f:
             f.write(file_bytes)
             
+        # Run opportunistic cleanup of expired temp files
+        cls.cleanup_expired_temp_files()
+        
         return file_id, saved_path
 
     @staticmethod
     def get_file_path_by_id(file_id: str) -> str:
+        # Validate file_id structure
+        clean_id = (file_id or "").strip()
+        if not clean_id or len(clean_id) < 8 or not validate_uuid(clean_id):
+            raise DocumentProcessingError(detail="Invalid or malformed document identifier.")
+            
+        prefix = f"{clean_id}_"
         for f in os.listdir(TEMP_STORAGE_DIR):
-            if f.startswith(file_id):
-                return os.path.join(TEMP_STORAGE_DIR, f)
+            if f.startswith(prefix):
+                full_path = os.path.join(TEMP_STORAGE_DIR, f)
+                if is_safe_path(TEMP_STORAGE_DIR, full_path) and os.path.isfile(full_path):
+                    return full_path
+                    
         raise DocumentProcessingError(detail="Uploaded document not found or expired. Please upload again.")
 
     @classmethod
     def extract_chunks_and_metadata(cls, file_path: str, original_filename: str) -> Tuple[DocumentMetadata, List[DocumentChunk]]:
+        if not is_safe_path(TEMP_STORAGE_DIR, file_path) and not os.path.exists(file_path):
+            raise DocumentProcessingError(detail="Document file access denied.")
+
         ext = os.path.splitext(file_path)[1].lower()
         file_size = os.path.getsize(file_path)
         file_id = os.path.basename(file_path).split("_")[0]
@@ -188,9 +232,10 @@ class DocumentService:
             return metadata, chunks
             
         except Exception as e:
-            logger.error(f"Error processing document {file_path}: {e}")
+            logger.error(f"Error processing document {file_path}: {e}", exc_info=True)
             if isinstance(e, (DocumentProcessingError, UnsupportedFileTypeError)):
                 raise e
-            raise DocumentProcessingError(detail=f"Failed to extract document contents: {str(e)}")
+            # Sanitize client-facing error message
+            raise DocumentProcessingError(detail="We couldn't process this document. Please check that the file is not corrupted or password-protected.")
 
 document_service = DocumentService()

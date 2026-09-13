@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
 
 class StructuredPitfall(BaseModel):
@@ -51,9 +51,16 @@ class RevisionPack(BaseModel):
     grounding_statement: str = "All generated notes and questions are strictly grounded in your uploaded material."
 
 class RevisionGenerateRequest(BaseModel):
-    file_id: str
-    course_name: str = "Operating Systems"
-    study_goal: str = "Exam Preparation"
-    difficulty: str = "Intermediate"
-    exam_style: str = "Mixed"
-    notes_length: str = "Balanced"
+    file_id: str = Field(min_length=8, max_length=64, description="Target document file identifier")
+    course_name: str = Field(default="Operating Systems", max_length=120)
+    study_goal: str = Field(default="Exam Preparation", max_length=60)
+    difficulty: str = Field(default="Intermediate", max_length=40)
+    exam_style: str = Field(default="Mixed", max_length=40)
+    notes_length: str = Field(default="Balanced", max_length=40)
+
+    @field_validator("file_id", "course_name", "study_goal", "difficulty", "exam_style", "notes_length")
+    @classmethod
+    def trim_strings(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return v

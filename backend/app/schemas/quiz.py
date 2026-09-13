@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 
 class QuizQuestion(BaseModel):
-    id: str
+    id: str = Field(max_length=64)
     question_type: str = Field(description="MCQ or SHORT_ANSWER")
-    topic_title: str
+    topic_title: str = Field(max_length=200)
     question: str
     options: Optional[List[str]] = Field(default=None, description="Array of 4 randomized options if MCQ, None if short answer")
     correct_option_index: Optional[int] = Field(default=None, description="0, 1, 2, or 3 for MCQ; None for SHORT_ANSWER")
@@ -14,9 +14,16 @@ class QuizQuestion(BaseModel):
     difficulty: str = "Intermediate"
 
 class QuizSubmissionItem(BaseModel):
-    question_id: str
-    user_answer: str
+    question_id: str = Field(max_length=64)
+    user_answer: str = Field(max_length=2000)
     selected_option_index: Optional[int] = None
+
+    @field_validator("user_answer")
+    @classmethod
+    def clean_answer(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 class QuizSubmissionRequest(BaseModel):
     submissions: List[QuizSubmissionItem]

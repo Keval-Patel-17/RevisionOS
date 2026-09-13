@@ -1,14 +1,19 @@
 import os
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from ..schemas.revision import RevisionGenerateRequest, RevisionPack
 from ..schemas.document import PersonalizationPreferences
 from ..services.document_service import document_service
 from ..services.gemini_service import gemini_service
+from ..utils.rate_limiter import rate_limit
 from ..utils.logger import logger
 
 router = APIRouter()
 
-@router.post("/generate-revision", response_model=RevisionPack)
+@router.post(
+    "/generate-revision",
+    response_model=RevisionPack,
+    dependencies=[Depends(rate_limit(max_requests=20, window_seconds=60, route_tag="generate_revision"))]
+)
 async def generate_revision(req: RevisionGenerateRequest):
     file_path = document_service.get_file_path_by_id(req.file_id)
     filename = os.path.basename(file_path).split("_", 1)[1] if "_" in os.path.basename(file_path) else os.path.basename(file_path)

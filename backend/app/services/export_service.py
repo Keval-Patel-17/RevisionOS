@@ -2,14 +2,13 @@ import io
 import os
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from docx import Document as DocxDocument
-from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from ..schemas.export import ExportRequest
 from ..utils.logger import logger
+from ..utils.security import xml_escape
 
 class ExportService:
     @staticmethod
@@ -102,64 +101,80 @@ class ExportService:
         story = []
         
         # Header
-        story.append(Paragraph(f"RevisionOS Pack — {pack.course_name}", title_style))
-        story.append(Paragraph(f"Source: <b>{pack.source_document_name}</b> | Study Estimate: <b>{pack.study_time_estimate}</b> | High-Priority Topics: <b>{pack.high_priority_count}</b> | Coverage: <b>{pack.processed_units}/{pack.total_units} units ({pack.coverage_percentage}%)</b>", sub_style))
+        safe_course = xml_escape(pack.course_name)
+        safe_doc_name = xml_escape(pack.source_document_name)
+        safe_study_time = xml_escape(pack.study_time_estimate)
+        safe_grounding = xml_escape(pack.grounding_statement)
+        
+        story.append(Paragraph(f"RevisionOS Pack — {safe_course}", title_style))
+        story.append(Paragraph(
+            f"Source: <b>{safe_doc_name}</b> | Study Estimate: <b>{safe_study_time}</b> | High-Priority Topics: <b>{pack.high_priority_count}</b> | Coverage: <b>{pack.processed_units}/{pack.total_units} units ({pack.coverage_percentage}%)</b>",
+            sub_style
+        ))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#cbd5e1'), spaceBefore=0, spaceAfter=10))
         
         # Grounding statement
-        story.append(Paragraph(f"<i>{pack.grounding_statement}</i>", sub_style))
+        story.append(Paragraph(f"<i>{safe_grounding}</i>", sub_style))
         
         # Section 1: Topics & Notes
         story.append(Paragraph("1. High-Yield Topic Revision Notes", h1_style))
         
         for idx, topic in enumerate(pack.topics):
             p_color = '#dc2626' if topic.priority == 'HIGH' else ('#d97706' if topic.priority == 'MEDIUM' else '#2563eb')
+            safe_title = xml_escape(topic.topic_title)
+            safe_source = xml_escape(topic.source_reference)
+            safe_summary = xml_escape(topic.summary)
+            
             story.append(Paragraph(
-                f"<b>{idx+1}. {topic.topic_title}</b> &nbsp;&nbsp;<font color='{p_color}'>[{topic.priority} PRIORITY]</font> &nbsp;&bull;&nbsp; <font color='#64748b'>{topic.source_reference}</font>",
+                f"<b>{idx+1}. {safe_title}</b> &nbsp;&nbsp;<font color='{p_color}'>[{topic.priority} PRIORITY]</font> &nbsp;&bull;&nbsp; <font color='#64748b'>{safe_source}</font>",
                 h2_style
             ))
-            story.append(Paragraph(f"<b>Overview:</b> {topic.summary}", body_style))
+            story.append(Paragraph(f"<b>Overview:</b> {safe_summary}", body_style))
             if topic.core_explanation and topic.core_explanation != topic.summary:
-                story.append(Paragraph(f"<b>Core Concept:</b> {topic.core_explanation}", body_style))
+                safe_core = xml_escape(topic.core_explanation)
+                story.append(Paragraph(f"<b>Core Concept:</b> {safe_core}", body_style))
             
             if topic.key_concepts:
                 story.append(Paragraph("<b>Key Concepts:</b>", body_style))
                 for c in topic.key_concepts:
-                    story.append(Paragraph(f"&bull; {c}", bullet_style))
+                    story.append(Paragraph(f"&bull; {xml_escape(c)}", bullet_style))
                     
             if topic.definitions:
                 story.append(Paragraph("<b>Important Definitions:</b>", body_style))
                 for d in topic.definitions:
-                    story.append(Paragraph(f"&bull; {d}", bullet_style))
+                    story.append(Paragraph(f"&bull; {xml_escape(d)}", bullet_style))
 
             if topic.procedures:
                 story.append(Paragraph("<b>Algorithmic Procedures & Steps:</b>", body_style))
                 for proc in topic.procedures:
-                    story.append(Paragraph(f"&bull; {proc}", bullet_style))
+                    story.append(Paragraph(f"&bull; {xml_escape(proc)}", bullet_style))
                     
             if topic.formulas_or_rules:
                 story.append(Paragraph("<b>Formulas & Core Rules:</b>", body_style))
                 for f in topic.formulas_or_rules:
-                    story.append(Paragraph(f"<code>&bull; {f}</code>", box_style))
+                    story.append(Paragraph(f"<code>&bull; {xml_escape(f)}</code>", box_style))
 
             if topic.comparisons:
                 story.append(Paragraph("<b>Key Comparisons:</b>", body_style))
                 for comp in topic.comparisons:
-                    story.append(Paragraph(f"&bull; <b>{comp.aspect}:</b> {comp.concept_a} vs {comp.concept_b}", bullet_style))
+                    safe_aspect = xml_escape(comp.aspect)
+                    safe_a = xml_escape(comp.concept_a)
+                    safe_b = xml_escape(comp.concept_b)
+                    story.append(Paragraph(f"&bull; <b>{safe_aspect}:</b> {safe_a} vs {safe_b}", bullet_style))
                     
             if topic.structured_pitfalls:
                 story.append(Paragraph("<b>Common Exam Pitfalls & Misconceptions:</b>", body_style))
                 for pit in topic.structured_pitfalls:
                     story.append(Paragraph(
-                        f"<b>MISCONCEPTION:</b> {pit.misconception}<br/>"
-                        f"<b>CORRECT UNDERSTANDING:</b> {pit.correct_understanding}<br/>"
-                        f"<b>WHY IT MATTERS:</b> {pit.why_it_matters}",
+                        f"<b>MISCONCEPTION:</b> {xml_escape(pit.misconception)}<br/>"
+                        f"<b>CORRECT UNDERSTANDING:</b> {xml_escape(pit.correct_understanding)}<br/>"
+                        f"<b>WHY IT MATTERS:</b> {xml_escape(pit.why_it_matters)}",
                         pitfall_style
                     ))
             elif topic.common_mistakes:
                 story.append(Paragraph("<b>Common Exam Pitfalls:</b>", body_style))
                 for m in topic.common_mistakes:
-                    story.append(Paragraph(f"&bull; {m}", bullet_style))
+                    story.append(Paragraph(f"&bull; {xml_escape(m)}", bullet_style))
                     
             story.append(Spacer(1, 6))
 
@@ -170,30 +185,38 @@ class ExportService:
             story.append(Paragraph("Questions generated directly and strictly from your lecture source material.", sub_style))
             
             for idx, q in enumerate(quiz_q):
-                story.append(Paragraph(f"<b>Q{idx+1}. [{q.question_type}] {q.question}</b> &nbsp;<font color='#64748b'>({q.source_reference})</font>", h2_style))
+                safe_q_text = xml_escape(q.question)
+                safe_q_source = xml_escape(q.source_reference)
+                story.append(Paragraph(f"<b>Q{idx+1}. [{q.question_type}] {safe_q_text}</b> &nbsp;<font color='#64748b'>({safe_q_source})</font>", h2_style))
                 if q.options:
                     for opt in q.options:
-                        story.append(Paragraph(f"&bull; {opt}", bullet_style))
+                        story.append(Paragraph(f"&bull; {xml_escape(opt)}", bullet_style))
                 story.append(Spacer(1, 4))
                 
             # Quiz Answer Key
             story.append(Spacer(1, 10))
             story.append(Paragraph("3. Answer Key & Source Grounding Explanations", h1_style))
             for idx, q in enumerate(quiz_q):
-                story.append(Paragraph(f"<b>Q{idx+1} Answer:</b> {q.correct_answer}", body_style))
-                story.append(Paragraph(f"<b>Explanation:</b> {q.explanation} (<i>{q.source_reference}</i>)", box_style))
+                safe_ans = xml_escape(q.correct_answer)
+                safe_expl = xml_escape(q.explanation)
+                safe_source = xml_escape(q.source_reference)
+                story.append(Paragraph(f"<b>Q{idx+1} Answer:</b> {safe_ans}", body_style))
+                story.append(Paragraph(f"<b>Explanation:</b> {safe_expl} (<i>{safe_source}</i>)", box_style))
 
         # Section 3: Weak Areas & Micro-Revision if present
         if eval_res and eval_res.weak_topics:
             story.append(Spacer(1, 10))
             story.append(Paragraph("4. Weak Area Micro-Revision & Study Plan", h1_style))
             story.append(Paragraph(f"<b>Quiz Score:</b> {eval_res.score}/{eval_res.total_questions} ({eval_res.percentage}%)", body_style))
-            story.append(Paragraph(f"<b>Next Action:</b> {eval_res.revise_this_next_summary}", box_style))
+            story.append(Paragraph(f"<b>Next Action:</b> {xml_escape(eval_res.revise_this_next_summary)}", box_style))
             
             for wt in eval_res.weak_topics:
-                story.append(Paragraph(f"&bull; <b>{wt.topic_title}</b> ({wt.source_reference}) — {wt.reason}", bullet_style))
+                safe_wt_title = xml_escape(wt.topic_title)
+                safe_wt_source = xml_escape(wt.source_reference)
+                safe_wt_reason = xml_escape(wt.reason)
+                story.append(Paragraph(f"&bull; <b>{safe_wt_title}</b> ({safe_wt_source}) — {safe_wt_reason}", bullet_style))
                 for rec in wt.recommended_revision_points:
-                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&bull; {rec}", bullet_style))
+                    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&bull; {xml_escape(rec)}", bullet_style))
 
         doc.build(story)
         pdf_bytes = buffer.getvalue()
@@ -209,7 +232,7 @@ class ExportService:
         doc = DocxDocument()
         
         # Document Title
-        title_p = doc.add_heading(f"RevisionOS Pack — {pack.course_name}", level=0)
+        doc.add_heading(f"RevisionOS Pack — {pack.course_name}", level=0)
         
         p = doc.add_paragraph()
         p.add_run(f"Source Document: {pack.source_document_name} | Study Estimate: {pack.study_time_estimate} | High-Priority Topics: {pack.high_priority_count}\n")
@@ -219,7 +242,7 @@ class ExportService:
         # Section 1: Notes
         doc.add_heading("1. High-Yield Topic Revision Notes", level=1)
         for idx, topic in enumerate(pack.topics):
-            h = doc.add_heading(f"{idx+1}. {topic.topic_title} [{topic.priority} PRIORITY] - {topic.source_reference}", level=2)
+            doc.add_heading(f"{idx+1}. {topic.topic_title} [{topic.priority} PRIORITY] - {topic.source_reference}", level=2)
             doc.add_paragraph(f"Overview: {topic.summary}")
             if topic.core_explanation and topic.core_explanation != topic.summary:
                 doc.add_paragraph(f"Core Explanation: {topic.core_explanation}")

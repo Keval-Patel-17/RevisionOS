@@ -11,7 +11,9 @@ import {
   ListOrdered,
   ArrowRightLeft,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Copy,
+  Check
 } from 'lucide-react';
 import { TopicNote } from '../../types';
 
@@ -22,6 +24,23 @@ interface TopicCardProps {
 
 export const TopicCard: React.FC<TopicCardProps> = ({ topic, onToggleReviewed }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const parts = [
+      `# ${topic.topic_title} [${topic.priority} PRIORITY - ${topic.source_reference}]`,
+      `\n**Overview**: ${topic.summary}`,
+      topic.core_explanation ? `\n**Core Concept**: ${topic.core_explanation}` : '',
+      topic.key_concepts?.length ? `\n**Key Concepts**:\n${topic.key_concepts.map(k => `- ${k}`).join('\n')}` : '',
+      topic.formulas_or_rules?.length ? `\n**Formulas & Rules**:\n${topic.formulas_or_rules.map(f => `- ${f}`).join('\n')}` : '',
+      topic.structured_pitfalls?.length ? `\n**Exam Pitfalls**:\n${topic.structured_pitfalls.map(p => `- Misconception: ${p.misconception} | Truth: ${p.correct_understanding}`).join('\n')}` : '',
+    ].filter(Boolean);
+
+    navigator.clipboard.writeText(parts.join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const getPriorityStyle = (priority: string) => {
     switch (priority) {
@@ -70,7 +89,20 @@ export const TopicCard: React.FC<TopicCardProps> = ({ topic, onToggleReviewed })
           </p>
         </div>
 
-        <div className="flex items-center space-x-3 shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center space-x-2 shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={handleCopy}
+            className={`p-1.5 rounded-lg border transition-all ${
+              copied 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300' 
+                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100 border-transparent hover:border-slate-200'
+            }`}
+            title={copied ? "Copied to clipboard!" : "Copy Topic Notes"}
+            aria-label="Copy Topic Notes"
+          >
+            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+          </button>
+
           <button
             onClick={() => onToggleReviewed(topic.id)}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all ${
