@@ -1,0 +1,34 @@
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+
+# Uploads & Temp
+temp_uploads/
+
+# Node
+node_modules/
+dist/
+.eslintcache
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
